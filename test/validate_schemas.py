@@ -63,6 +63,7 @@ def main():
     for path in sorted(glob.glob(meta_pattern, recursive=True)):
         results.append(validate_file(path, meta_schema, "meta.json"))
 
+<<<<<<< HEAD
     tokens_schema = load_schema("tokens.schema.json")
 
     # 3. Validate all tokens.json files under test/
@@ -77,6 +78,8 @@ def main():
     for path in sorted(glob.glob(ast_pattern, recursive=True)):
         results.append(validate_file(path, ast_schema, "ast.json"))
 
+=======
+>>>>>>> e8597cc (test: make grammar, stages, exit required in meta.schema.json; add schema validation)
     # Print results
     failed = 0
     for path, error in results:
@@ -89,7 +92,11 @@ def main():
             failed += 1
 
     total = len(results)
+<<<<<<< HEAD
     print(f"\n{total - failed}/{total} files valid (config.json / meta.json / tokens.json / ast.json)", file=sys.stderr)
+=======
+    print(f"\n{total - failed}/{total} files valid", file=sys.stderr)
+>>>>>>> e8597cc (test: make grammar, stages, exit required in meta.schema.json; add schema validation)
     return 1 if failed else 0
 
 
