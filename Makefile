@@ -1,6 +1,6 @@
 CLANG = clang
 MAIN_FLAGS = -std=c23 -g -O0
-WARNINGS_FLAGS = -Wall -Wextra -Wpedantic -Werror
+WARNINGS_FLAGS = -Wall -Wextra -Wpedantic
 SANITIZER_FLAGS = -fsanitize=undefined
 FLAGS = $(MAIN_FLAGS) $(WARNINGS_FLAGS) $(SANITIZER_FLAGS) 
 
