@@ -1,0 +1,6 @@
+{
+  "grammar": "2",
+  "stages": [
+    "lexer"
+  ]
+}

@@ -1,8 +1,5 @@
 {
-  "$schema": "../../schemas/meta.schema.json",
-  "grammar": [
-    "2"
-  ],
+  "grammar": "2",
   "stages": [
     "lexer",
     "parser"
