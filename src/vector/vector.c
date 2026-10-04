@@ -2,6 +2,7 @@
 
 #include "../memory/managment.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 void vec_push(struct Vec* ptr, const size_t sizeof_data, const void* data) {
@@ -14,6 +15,14 @@ void vec_push(struct Vec* ptr, const size_t sizeof_data, const void* data) {
   ptr->len++;
 }
 
+void vec_pop(struct Vec* ptr) {
+  ptr->len--;
+}
+
 void* vec_get_ptr(const struct Vec* ptr, const size_t sizeof_data, const size_t idx) {
   return (char*) ptr->data + idx * sizeof_data;
+}
+
+void vec_free(struct Vec* ptr) {
+  free(ptr->data);
 }

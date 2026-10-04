@@ -18,9 +18,9 @@
 
 Token next_token(const char**);
 static inline int skip_insignificant(const char**, size_t*);
-static inline enum Kind makeOperatorToken(const char** srcp);
-static inline enum Kind makeNubmerToken(const char** srcp, Token* tokenp);
-static inline enum Kind makeIdentifierToken(const char** srcp, Token* token);
+static inline enum TokenKind makeOperatorToken(const char** srcp);
+static inline enum TokenKind makeNubmerToken(const char** srcp, Token* tokenp);
+static inline enum TokenKind makeIdentifierToken(const char** srcp, Token* token);
 
 int tokenize(const char* src, TokenList* const tokens) {
   const char* const start = src;
@@ -32,9 +32,9 @@ int tokenize(const char* src, TokenList* const tokens) {
     token.offset += global_offset;
     global_offset = src - start;
     vecPush(tokens, token);
-    if (token.kind == ERROR)
+    if (token.kind == TK_ERROR)
       status = 1;
-    if (token.kind == T_EOF)
+    if (token.kind == TK_EOF)
       break;
   }
   return status;
@@ -45,7 +45,7 @@ Token next_token(const char** srcp) {
   size_t local_offset;
   if (skip_insignificant(&src, &local_offset)) {
     *srcp = src;
-    return (Token) {.kind = ERROR, .offset = local_offset};
+    return (Token) {.kind = TK_ERROR, .offset = local_offset};
   }
   local_offset = src - *srcp;
   char c       = peek(src);
@@ -62,19 +62,19 @@ Token next_token(const char** srcp) {
       break;
 
     case '(':
-      token.kind = LEFT_PARENTHESIS;
+      token.kind = TK_LEFT_PARENTHESIS;
       advance(src);
       break;
     case ')':
-      token.kind = RIGHT_PARENTHESIS;
+      token.kind = TK_RIGHT_PARENTHESIS;
       advance(src);
       break;
 
     case '\0':
-      token.kind = T_EOF;
+      token.kind = TK_EOF;
       break;
     case ';':
-      token.kind = EOS;
+      token.kind = TK_EOS;
       advance(src);
       break;
     default:
@@ -86,7 +86,7 @@ Token next_token(const char** srcp) {
         token.kind = makeIdentifierToken(&src, &token);
         break;
       }
-      token.kind = ERROR;
+      token.kind = TK_ERROR;
       advance(src);
       break;
   }
@@ -154,26 +154,26 @@ static inline int skip_insignificant(const char** srcp, size_t* offset) {
   return status;
 }
 
-static inline enum Kind makeOperatorToken(const char** srcp) {
+static inline enum TokenKind makeOperatorToken(const char** srcp) {
   const char* src = *srcp;
   advance(*srcp);
   switch (*src) {
     case '+':
-      return OP_PLUS;
+      return TK_OP_PLUS;
     case '-':
-      return OP_MINUS;
+      return TK_OP_MINUS;
     case '*':
-      return OP_ASTERISK;
+      return TK_OP_ASTERISK;
     case '/':
-      return OP_SLASH;
+      return TK_OP_SLASH;
     case '=':
-      return OP_ASSIGN;
+      return TK_OP_ASSIGN;
     default:
-      return ERROR;
+      return TK_ERROR;
   }
 }
 
-static inline enum Kind makeNubmerToken(const char** srcp, Token* token) {
+static inline enum TokenKind makeNubmerToken(const char** srcp, Token* token) {
   const char* src = *srcp;
 
   assert(isdigit(peek(src)));
@@ -185,12 +185,12 @@ static inline enum Kind makeNubmerToken(const char** srcp, Token* token) {
         advance(src);
       }
       *srcp = src;
-      return ERROR;
+      return TK_ERROR;
     } else {
       advance(src);
       *srcp             = src;
       token->data.value = 0;
-      return INT_LITERAL;
+      return TK_INT_LITERAL;
     }
   }
   char c;
@@ -202,7 +202,7 @@ static inline enum Kind makeNubmerToken(const char** srcp, Token* token) {
         advance(src);
       } while (isdigit(peek(src)));
       *srcp = src;
-      return ERROR;
+      return TK_ERROR;
     }
     number *= 10;
     number += d;
@@ -210,10 +210,10 @@ static inline enum Kind makeNubmerToken(const char** srcp, Token* token) {
   }
   token->data.value = number;
   *srcp             = src;
-  return INT_LITERAL;
+  return TK_INT_LITERAL;
 }
 
-static inline enum Kind makeIdentifierToken(const char** srcp, Token* token) {
+static inline enum TokenKind makeIdentifierToken(const char** srcp, Token* token) {
   const char* src = *srcp;
   size_t size     = 1;
   while (isalnum(peek(src))) {
@@ -224,24 +224,24 @@ static inline enum Kind makeIdentifierToken(const char** srcp, Token* token) {
   memcpy(str, *srcp, size);
   str[--size] = '\0';
 
-  enum Kind kind = NIL;
+  enum TokenKind kind = TK_NIL;
   if (size == 3) {
     if (!strcmp(str, "val")) {
-      kind = VAL;
+      kind = TK_VAL;
       free(str);
     } else if (!strcmp(str, "var")) {
-      kind = VAR;
+      kind = TK_VAR;
       free(str);
     }
   } else if (size == 6) {
     if (!strcmp(str, "return")) {
-      kind = RETURN;
+      kind = TK_RETURN;
       free(str);
     }
   }
   *srcp = src;
-  if (kind == NIL) {
-    kind            = IDENTIFIER;
+  if (kind == TK_NIL) {
+    kind            = TK_IDENTIFIER;
     token->data.str = str;
   }
   return kind;

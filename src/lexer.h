@@ -7,27 +7,27 @@
 #include <stdint.h>
 
 typedef struct {
-  enum Kind : unsigned char {
-    NIL = 0,
-    T_EOF,
-    EOS,
-    ERROR,
+  enum TokenKind : unsigned char {
+    TK_NIL = 0,
+    TK_EOF,
+    TK_EOS,
+    TK_ERROR,
 
-    IDENTIFIER,
-    VAL,
-    VAR,
-    RETURN,
+    TK_IDENTIFIER,
+    TK_VAL,
+    TK_VAR,
+    TK_RETURN,
 
-    RIGHT_PARENTHESIS,
-    LEFT_PARENTHESIS,
+    TK_RIGHT_PARENTHESIS,
+    TK_LEFT_PARENTHESIS,
 
-    OP_PLUS,
-    OP_MINUS,
-    OP_ASTERISK,
-    OP_SLASH,
-    OP_ASSIGN,
+    TK_OP_PLUS,
+    TK_OP_MINUS,
+    TK_OP_ASTERISK,
+    TK_OP_SLASH,
+    TK_OP_ASSIGN,
 
-    INT_LITERAL,
+    TK_INT_LITERAL,
   } kind;
 
   // By Odin's beard, WHY would every token want to know its line and column;
