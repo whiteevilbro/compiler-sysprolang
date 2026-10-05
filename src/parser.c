@@ -38,7 +38,6 @@ static union {
 
 #define newNode() ((ASTNode*) smalloc(sizeof(ASTNode)))
 
-// static inline ASTNode* new_program(size_t);
 static int parse_return(TokenList*, size_t*, ASTNode**);
 static int parse_decl(TokenList*, size_t*, ASTNode**);
 static int parse_expr(TokenList*, size_t*, bindingPower, ASTNode**);
@@ -292,7 +291,8 @@ end:
 int parse(TokenList* token_list, ASTNode** nodep) {
   int status = 0;
 
-  ASTNode* program = new_program(0);
+  Token* token     = vecGetPtr(token_list, 0);
+  ASTNode* program = new_program(token->offset);
   *nodep           = program;
 
   size_t size    = vecSize(token_list);
@@ -300,7 +300,6 @@ int parse(TokenList* token_list, ASTNode** nodep) {
 
   // two-star programming
   ASTNode** last_statement = &(program->children);
-  Token* token;
   do {
     token = vecGetPtr(token_list, current);
     switch (token->kind) {
