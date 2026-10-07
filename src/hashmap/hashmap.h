@@ -24,12 +24,12 @@
 
 // clang-format off
 #define hashmap_insert(map, key, data)               \
-  _Generic((key), typeof((map->map_types)->t_key):   \
-  _Generic((data), typeof((map->map_types)->t_data): \
+  _Generic((key), typeof(((map)->map_types)->t_key):   \
+  _Generic((data), typeof(((map)->map_types)->t_data): \
   hashmap_base_insert(&((map)->map_base), (const void*)(key), (void*)(data) )))
 
 #define hashmap_get(map, key)                      \
-  _Generic((key), typeof((map->map_types)->t_key): \
+  _Generic((key), typeof(((map)->map_types)->t_key): \
   hashmap_base_get(&((map)->map_base), (const void*)(key) ))
 // clang-format on
 

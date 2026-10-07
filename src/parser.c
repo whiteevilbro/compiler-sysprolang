@@ -1,14 +1,25 @@
 #include "parser.h"
 
 #include "./memory/managment.h"
+#include "hashmap/hashing.h"
+#include "hashmap/hashmap.h"
 #include "lexer.h"
 #include "vector/vector.h"
 
 #include <assert.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef uint8_t bindingPower;
+
+typedef struct {
+  enum DeclarationType kind : 2;
+} IdentifierMeta;
+
+HashmapDef(char, IdentifierMeta) map;
+
+static map idmap;
 
 typedef struct {
   bindingPower lbp;
@@ -124,6 +135,17 @@ static int parse_decl(TokenList* token_list, size_t* offset, ASTNode** node) {
     status |= parse_expr(token_list, offset, 0, &decl_node->children->next);
   }
 
+  if (!status) {
+    const char* key = (const char*) decl_node->children->data.asIndentifier.name;
+    if (hashmap_get(&idmap, key)) {
+      status |= 1;
+    } else {
+      IdentifierMeta* data = (IdentifierMeta*) smalloc(sizeof(IdentifierMeta));
+      *data                = (IdentifierMeta) {.kind = decl_node->data.asDeclaration.type};
+      hashmap_insert(&idmap, key, data);
+    }
+  }
+
   *node = decl_node;
   return status;
 }
@@ -208,6 +230,8 @@ static int parse_expr(TokenList* token_list, size_t* offset, bindingPower min_bp
   switch (token->kind) {
     case TK_IDENTIFIER:
       lhs = make_identifier_node(token);
+      if (!hashmap_get((&idmap), (const char*) lhs->data.asIndentifier.name))
+        status |= 1;
       break;
 
     case TK_INT_LITERAL:
@@ -217,8 +241,10 @@ static int parse_expr(TokenList* token_list, size_t* offset, bindingPower min_bp
     case TK_LEFT_PARENTHESIS:
       status |= parse_expr(token_list, offset, 0, &lhs);
       token = vecGetPtr(token_list, *offset);
-      if (token->kind != TK_RIGHT_PARENTHESIS)
+      if (token->kind != TK_RIGHT_PARENTHESIS) {
         status |= 1;
+        lhs = make_error_node(token);
+      }
       (*offset)++;
       break;
 
@@ -275,10 +301,19 @@ static int parse_expr(TokenList* token_list, size_t* offset, bindingPower min_bp
     (*offset)++;
     ASTNode* rhs;
     status |= parse_expr(token_list, offset, bp.rbp, &rhs);
-    lhs->next     = rhs;
     ASTNode* res  = make_binary_operator_node(token, op);
     res->children = lhs;
-    lhs           = res;
+    lhs->next     = rhs;
+
+    if (res->data.asBinaryOperator.kind == BOK_ASSIGN) {
+      if (lhs->kind == NK_IDENTIFIER) {
+        IdentifierMeta* data = hashmap_get(&idmap, (const char*) lhs->data.asIndentifier.name);
+        if (!data || data->kind == DT_VAL)
+          status |= 1;
+      }
+    }
+
+    lhs = res;
     // continue;
   }
 
@@ -288,8 +323,13 @@ end:
   return status;
 }
 
+static inline int string_cmp(const void* s1, const void* s2) { return strcmp(s1, s2); }
+
 int parse(TokenList* token_list, ASTNode** nodep) {
   int status = 0;
+
+  hashmap_cleanup(&idmap);
+  hashmap_init(&idmap, string_hash, string_cmp);
 
   Token* token     = vecGetPtr(token_list, 0);
   ASTNode* program = new_program(token->offset);
@@ -349,6 +389,13 @@ int parse(TokenList* token_list, ASTNode** nodep) {
     }
 
   } while (token->kind != TK_EOF && current < size);
+
+  last_statement = &(program->children);
+  while ((*last_statement)->next) {
+    last_statement = &((*last_statement)->next);
+  }
+  if ((*last_statement)->kind != NK_RETURN)
+    status |= 1;
 
   return status;
 }
