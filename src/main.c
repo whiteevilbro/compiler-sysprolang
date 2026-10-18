@@ -3,6 +3,7 @@
 #include "output.h"
 #include "parser.h"
 
+#include <bits/getopt_core.h>
 #include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,9 +12,10 @@ int main(int argc, char* argv[]) {
   const char* input_file  = NULL;
   const char* lexer_file  = NULL;
   const char* parser_file = NULL;
+  const char* ll_file     = NULL;
 
   int opt;
-  while ((opt = getopt(argc, argv, "l:p:f:")) != -1) {
+  while ((opt = getopt(argc, argv, "l:p:f:i:")) != -1) {
     switch (opt) {
       case 'l':
         lexer_file = optarg;
@@ -23,6 +25,9 @@ int main(int argc, char* argv[]) {
         break;
       case 'f':
         input_file = optarg;
+        break;
+      case 'i':
+        ll_file = optarg;
         break;
       default:
 usage:
@@ -48,10 +53,17 @@ usage:
     output_tokens(lexer_file, tokens, &newlines);
 
   ASTNode* program;
-  status |= parse(&tokens, &program);
+  if (parser_file || ll_file)
+    status |= parse(&tokens, &program, input_file);
 
   if (parser_file)
     output_ast(parser_file, program, &newlines);
+
+  if (status)
+    return status;
+
+  if (ll_file)
+    output_ll(ll_file, program);
 
   return status;
 }

@@ -34,6 +34,10 @@ typedef struct {
 } IdentifierData;
 
 typedef struct {
+  const char* filename;
+} ProgramData;
+
+typedef struct {
   char placeholder;
 } ErrorData;
 
@@ -62,10 +66,11 @@ typedef struct ASTNode {
     DeclarationData asDeclaration;
     IdentifierData asIndentifier;
     ErrorData asError;
+    ProgramData asProgram;
   } data;
 
 } ASTNode;
 
-int parse(TokenList*, ASTNode**);
+int parse(TokenList*, ASTNode**, const char*);
 
 #endif

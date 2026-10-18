@@ -27,7 +27,7 @@ run: build/$(EXE)
 clean:
 	rm -rf build/*
 
-test:
-	python3 test/run_tests.py --stage parser --grammar 1
+test: build
+	python3 test/run_tests.py --grammar 1 --keep all
 
 .PHONY: all build run clean test

@@ -1,5 +1,6 @@
 #include "output.h"
 
+#include "codegen.h"
 #include "input.h"
 #include "lexer.h"
 #include "parser.h"
@@ -120,4 +121,16 @@ void output_ast(const char* output_file, ASTNode* node, SizeVec* newlines) {
     output_ast_r(out_ast, node, newlines);
   }
   fclose(out_ast);
+}
+
+int output_ll(const char* output_file, ASTNode* ast) {
+  int status   = 0;
+  FILE* out_ll = fopen(output_file, "w");
+
+  if (out_ll)
+    status |= generate_llvm_ir(out_ll, ast);
+  else
+    status |= -2;
+  fclose(out_ll);
+  return status;
 }

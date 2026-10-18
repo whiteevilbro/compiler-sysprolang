@@ -7,5 +7,6 @@
 
 void output_tokens(const char*, TokenList, SizeVec*);
 void output_ast(const char*, ASTNode*, SizeVec*);
+int output_ll(const char*, ASTNode*);
 
 #endif

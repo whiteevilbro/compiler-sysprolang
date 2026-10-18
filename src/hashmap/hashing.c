@@ -1,5 +1,7 @@
 #include "hashing.h"
 
+#include <string.h>
+
 size_t string_hash(const void* p) {
   const char* c = (const char*) p;
   size_t hash   = 0;
@@ -14,3 +16,5 @@ size_t string_hash(const void* p) {
   hash += (hash << 15);
   return hash;
 }
+
+int string_cmp(const void* s1, const void* s2) { return strcmp(s1, s2); }

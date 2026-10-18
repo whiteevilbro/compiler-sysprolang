@@ -1,3 +1,8 @@
+// clang-format off
+#define _XOPEN_SOURCE 600
+#include <features.h>
+// clang-format on
+
 #include "parser.h"
 
 #include "./memory/managment.h"
@@ -11,13 +16,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+
 typedef uint8_t bindingPower;
 
-typedef struct {
-  enum DeclarationType kind : 2;
-} IdentifierMeta;
+// typedef struct {
+//   enum DeclarationType kind : 2;
+// } IdentifierMeta;
 
-HashmapDef(char, IdentifierMeta) map;
+HashmapDef(char, ASTNode) map;
 
 static map idmap;
 
@@ -64,10 +70,10 @@ static size_t skip_to(TokenList* token_list, size_t offset, enum TokenKind kind)
   return offset;
 }
 
-static inline ASTNode* new_program(size_t offset) {
+static inline ASTNode* new_program(size_t offset, const char* filename) {
   ASTNode* node = (ASTNode*) smalloc(sizeof(ASTNode));
 
-  *node = (ASTNode) {.kind = NK_PROGRAM, .offset = offset, .children = NULL, .next = NULL};
+  *node = (ASTNode) {.kind = NK_PROGRAM, .offset = offset, .children = NULL, .next = NULL, .data.asProgram = {.filename = filename}};
 
   return node;
 }
@@ -140,9 +146,9 @@ static int parse_decl(TokenList* token_list, size_t* offset, ASTNode** node) {
     if (hashmap_get(&idmap, key)) {
       status |= 1;
     } else {
-      IdentifierMeta* data = (IdentifierMeta*) smalloc(sizeof(IdentifierMeta));
-      *data                = (IdentifierMeta) {.kind = decl_node->data.asDeclaration.type};
-      hashmap_insert(&idmap, key, data);
+      // IdentifierMeta* data = (IdentifierMeta*) smalloc(sizeof(IdentifierMeta));
+      // *data                = (IdentifierMeta) {.kind = decl_node->data.asDeclaration.type};
+      hashmap_insert(&idmap, key, decl_node);
     }
   }
 
@@ -307,8 +313,8 @@ static int parse_expr(TokenList* token_list, size_t* offset, bindingPower min_bp
 
     if (res->data.asBinaryOperator.kind == BOK_ASSIGN) {
       if (lhs->kind == NK_IDENTIFIER) {
-        IdentifierMeta* data = hashmap_get(&idmap, (const char*) lhs->data.asIndentifier.name);
-        if (!data || data->kind == DT_VAL)
+        ASTNode* decl = hashmap_get(&idmap, (const char*) lhs->data.asIndentifier.name);
+        if (!decl || decl->kind != NK_DECLARE || decl->data.asDeclaration.type == DT_VAL)
           status |= 1;
       }
     }
@@ -323,16 +329,14 @@ end:
   return status;
 }
 
-static inline int string_cmp(const void* s1, const void* s2) { return strcmp(s1, s2); }
-
-int parse(TokenList* token_list, ASTNode** nodep) {
+int parse(TokenList* token_list, ASTNode** nodep, const char* source_filename) {
   int status = 0;
 
   hashmap_cleanup(&idmap);
   hashmap_init(&idmap, string_hash, string_cmp);
 
   Token* token     = vecGetPtr(token_list, 0);
-  ASTNode* program = new_program(token->offset);
+  ASTNode* program = new_program(token->offset, realpath(source_filename, NULL));
   *nodep           = program;
 
   size_t size    = vecSize(token_list);

@@ -20,14 +20,14 @@
       ]
     },
     "llvm": {
-      "cmd": ["{root}/build/splc", "-g", "{grammar}", "-o", "{llvm_out}", "{input}"],
+      "cmd": ["{root}/build/splc", "-i", "{llvm_out}", "-f", "{input}"],
       "out": "{llvm_out}",
       "preprocess": [
         {"type": "llvm"}
       ]
     },
     "compiler": {
-      "cmd": ["{root}/build/splc", "-g", "{grammar}", "-o", "{exe}", "{input}"]
+      "cmd": ["bash", "-c", "{root}/build/splc -i {llvm_out} -f {input} && clang {llvm_out} -o {exe}"]
     },
     "run": {
       "cmd": ["{exe}"],
