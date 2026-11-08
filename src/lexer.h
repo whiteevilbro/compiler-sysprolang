@@ -17,6 +17,11 @@ typedef struct {
     TK_VAL,
     TK_VAR,
     TK_RETURN,
+    TK_IF,
+    TK_ELSE,
+    TK_WHILE,
+    TK_BREAK,
+    TK_CONTINUE,
 
     TK_RIGHT_PARENTHESIS,
     TK_LEFT_PARENTHESIS,
@@ -27,7 +32,23 @@ typedef struct {
     TK_OP_SLASH,
     TK_OP_ASSIGN,
 
+    TK_OP_EQ,
+    TK_OP_NE,
+    TK_OP_LT,
+    TK_OP_GT,
+    TK_OP_LE,
+    TK_OP_GE,
+
+    TK_OP_AND,
+    TK_OP_OR,
+    TK_OP_NOT,
+
     TK_INT_LITERAL,
+    TK_TRUE,
+    TK_FALSE,
+
+    TK_BLOCK_START,
+    TK_BLOCK_END,
   } kind;
 
   // By Odin's beard, WHY would every token want to know its line and column;

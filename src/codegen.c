@@ -69,7 +69,7 @@ static inline int generate_statement(FILE* file, ASTNode* node, IdentMetaTable* 
     case NK_INT_LITERAL:
     case NK_IDENTIFIER:
     case NK_BINARY_OP:
-    case NK_UNARY:
+    case NK_UNARY_OP:
       return generate_expression(file, node, meta, NULL);
 
     case NK_PROGRAM:
@@ -127,7 +127,7 @@ static int generate_expression(FILE* file, ASTNode* node, IdentMetaTable* meta, 
       return generate_identifier(file, node, meta, result_name);
     case NK_BINARY_OP:
       return generate_binary(file, node, meta, result_name);
-    case NK_UNARY:
+    case NK_UNARY_OP:
       return generate_unary(file, node, meta, result_name);
 
     case NK_NIL:
@@ -181,7 +181,7 @@ static inline int generate_identifier(FILE* file, ASTNode* node, IdentMetaTable*
 }
 
 static inline int generate_unary(FILE* file, ASTNode* node, IdentMetaTable* meta, const char** result_name) {
-  assert(node->kind == NK_UNARY);
+  assert(node->kind == NK_UNARY_OP);
 
   static size_t counter = 0;
 

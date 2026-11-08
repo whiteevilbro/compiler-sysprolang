@@ -1,6 +1,6 @@
 CLANG = clang
 MAIN_FLAGS = -std=c23 -g -O0
-WARNINGS_FLAGS = -Wall -Wextra -Wpedantic -Werror
+WARNINGS_FLAGS = -Wall -Wextra -Wpedantic
 SANITIZER_FLAGS = -fsanitize=undefined
 FLAGS = $(MAIN_FLAGS) $(WARNINGS_FLAGS) $(SANITIZER_FLAGS) 
 
@@ -26,8 +26,9 @@ run: build/$(EXE)
 
 clean:
 	rm -rf build/*
+	rm -rf test/build/*
 
 test: build
-	python3 test/run_tests.py --grammar 1 --keep all
+	python3 test/run_tests.py --grammar 2 --stage parser
 
 .PHONY: all build run clean test

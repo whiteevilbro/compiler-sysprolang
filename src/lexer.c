@@ -16,11 +16,31 @@
 #define advance(src) (src)++
 #define advanceTwo(src) (src) += 2
 
+#define KEYWORD(keyword, token) {(keyword), sizeof(keyword) - sizeof(char), (token)}
+
 Token next_token(const char**);
 static inline int skip_insignificant(const char**, size_t*);
 static inline enum TokenKind makeOperatorToken(const char** srcp);
 static inline enum TokenKind makeNubmerToken(const char** srcp, Token* tokenp);
 static inline enum TokenKind makeIdentifierToken(const char** srcp, Token* token);
+
+//todo: should be sorted by size then lexicographically somewhere in the future (maybe)
+static struct {
+  const char* word;
+  size_t size;
+  enum TokenKind kind;
+} keywords[] = {
+    KEYWORD("if", TK_IF),
+    KEYWORD("val", TK_VAL),
+    KEYWORD("var", TK_VAR),
+    KEYWORD("else", TK_ELSE),
+    KEYWORD("true", TK_TRUE),
+    KEYWORD("false", TK_FALSE),
+    KEYWORD("while", TK_WHILE),
+    KEYWORD("break", TK_BREAK),
+    KEYWORD("return", TK_RETURN),
+    KEYWORD("continue", TK_CONTINUE),
+};
 
 int tokenize(const char* src, TokenList* const tokens) {
   const char* const start = src;
@@ -58,6 +78,11 @@ Token next_token(const char** srcp) {
     case '*':
     case '/':
     case '=':
+    case '<':
+    case '>':
+    case '!':
+    case '&':
+    case '|':
       token.kind = makeOperatorToken(&src);
       break;
 
@@ -70,6 +95,15 @@ Token next_token(const char** srcp) {
       advance(src);
       break;
 
+    case '{':
+      token.kind = TK_BLOCK_START;
+      advance(src);
+      break;
+    case '}':
+      token.kind = TK_BLOCK_END;
+      advance(src);
+      break;
+
     case '\0':
       token.kind = TK_EOF;
       break;
@@ -77,6 +111,7 @@ Token next_token(const char** srcp) {
       token.kind = TK_EOS;
       advance(src);
       break;
+
     default:
       if (isdigit(c)) {
         token.kind = makeNubmerToken(&src, &token);
@@ -166,8 +201,33 @@ static inline enum TokenKind makeOperatorToken(const char** srcp) {
       return TK_OP_ASTERISK;
     case '/':
       return TK_OP_SLASH;
+
     case '=':
+      if (peekOne(src) == '=')
+        return advance(*srcp), TK_OP_EQ;
       return TK_OP_ASSIGN;
+    case '<':
+      if (peekOne(src) == '=')
+        return advance(*srcp), TK_OP_LE;
+      return TK_OP_LT;
+    case '>':
+      if (peekOne(src) == '=')
+        return advance(*srcp), TK_OP_GE;
+      return TK_OP_GT;
+    case '!':
+      if (peekOne(src) == '=')
+        return advance(*srcp), TK_OP_NE;
+      return TK_OP_NOT;
+
+    case '&':
+      if (peekOne(src) == '&')
+        return advance(*srcp), TK_OP_AND;
+      return TK_ERROR;
+    case '|':
+      if (peekOne(src) == '|')
+        return advance(*srcp), TK_OP_OR;
+      return TK_ERROR;
+
     default:
       return TK_ERROR;
   }
@@ -224,25 +284,19 @@ static inline enum TokenKind makeIdentifierToken(const char** srcp, Token* token
   memcpy(str, *srcp, size);
   str[--size] = '\0';
 
-  enum TokenKind kind = TK_NIL;
-  if (size == 3) {
-    if (!strcmp(str, "val")) {
-      kind = TK_VAL;
-      free(str);
-    } else if (!strcmp(str, "var")) {
-      kind = TK_VAR;
-      free(str);
-    }
-  } else if (size == 6) {
-    if (!strcmp(str, "return")) {
-      kind = TK_RETURN;
+  enum TokenKind kind = TK_IDENTIFIER;
+
+  for (size_t i = 0; i < sizeof(keywords) / sizeof(keywords[0]); i++) {
+    if (size != keywords[i].size)
+      continue;
+    if (!strcmp(str, keywords[i].word)) {
+      kind = keywords[i].kind;
       free(str);
     }
   }
+
   *srcp = src;
-  if (kind == TK_NIL) {
-    kind            = TK_IDENTIFIER;
+  if (kind == TK_IDENTIFIER)
     token->data.str = str;
-  }
   return kind;
 }

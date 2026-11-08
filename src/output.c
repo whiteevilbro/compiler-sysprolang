@@ -18,6 +18,11 @@ static const char* token_string[] = {
     [TK_VAL]        = "VAL",
     [TK_VAR]        = "VAR",
     [TK_RETURN]     = "RETURN",
+    [TK_IF]         = "IF",
+    [TK_ELSE]       = "ELSE",
+    [TK_WHILE]      = "WHILE",
+    [TK_BREAK]      = "BREAK",
+    [TK_CONTINUE]   = "CONTINUE",
 
     [TK_RIGHT_PARENTHESIS] = "RPAREN",
     [TK_LEFT_PARENTHESIS]  = "LPAREN",
@@ -28,7 +33,23 @@ static const char* token_string[] = {
     [TK_OP_SLASH]    = "DIV",
     [TK_OP_ASSIGN]   = "ASSIGN",
 
+    [TK_OP_EQ] = "EQ",
+    [TK_OP_NE] = "NE",
+    [TK_OP_LT] = "LT",
+    [TK_OP_GT] = "GT",
+    [TK_OP_LE] = "LE",
+    [TK_OP_GE] = "GE",
+
+    [TK_OP_AND] = "AND",
+    [TK_OP_OR]  = "OR",
+    [TK_OP_NOT] = "NOT",
+
     [TK_INT_LITERAL] = "INT",
+    [TK_TRUE]        = "TRUE",
+    [TK_FALSE]       = "FALSE",
+
+    [TK_BLOCK_START] = "LBRACE",
+    [TK_BLOCK_END]   = "RBRACE",
 };
 
 static const char* ast_string[] = {
@@ -39,7 +60,14 @@ static const char* ast_string[] = {
     [NK_INT_LITERAL] = "IntLiteral",
     [NK_IDENTIFIER]  = "Ident",
     [NK_BINARY_OP]   = "BinOp",
-    [NK_UNARY]       = "Unary",
+    [NK_UNARY_OP]    = "Unary",
+
+    [NK_IF]           = "If",
+    [NK_WHILE]        = "While",
+    [NK_BREAK]        = "Break",
+    [NK_CONTINUE]     = "Continue",
+    [NK_BLOCK]        = "Block",
+    [NK_BOOL_LITERAL] = "BoolLiteral",
 };
 
 size_t* binsearch(size_t* l, size_t* r, size_t v) {

@@ -10,11 +10,32 @@ typedef struct {
 } IntLiteralData;
 
 typedef struct {
+  bool value;
+} BoolLiteralData;
+
+typedef struct {
+  enum UnaryOperatorKind : unsigned char {
+    UOK_NEG,
+    UOK_NOT,
+  } kind;
+} UnaryOperatorData;
+
+typedef struct {
   enum BinaryOperatorKind : unsigned char {
     BOK_ADD,
     BOK_SUBTRACT,
     BOK_MULTIPLY,
     BOK_DIVIDE,
+
+    BOK_AND,
+    BOK_OR,
+
+    BOK_EQ,
+    BOK_NE,
+    BOK_LT,
+    BOK_GT,
+    BOK_LE,
+    BOK_GE,
 
     BOK_ASSIGN,
   } kind;
@@ -46,13 +67,21 @@ typedef struct ASTNode {
     NK_NIL = 0,
     NK_ERROR,
     NK_PROGRAM,
+
     NK_RETURN,
     NK_DECLARE,
-    // NK_ASSIGN, //? do I really need this one? Assignment is a binary operator, though
+    NK_IF,
+    NK_WHILE,
+    NK_BREAK,
+    NK_CONTINUE,
+    NK_BLOCK, //? is it really needed? cant i just chain statements?
+
     NK_INT_LITERAL,
+    NK_BOOL_LITERAL,
+
     NK_IDENTIFIER,
     NK_BINARY_OP,
-    NK_UNARY,
+    NK_UNARY_OP,
   } kind;
 
   size_t offset;
@@ -62,6 +91,8 @@ typedef struct ASTNode {
 
   union {
     IntLiteralData asIntLiteral;
+    BoolLiteralData asBoolLiteral;
+    UnaryOperatorData asUnaryOperator;
     BinaryOperatorData asBinaryOperator;
     DeclarationData asDeclaration;
     IdentifierData asIndentifier;
