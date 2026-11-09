@@ -29,6 +29,6 @@ clean:
 	rm -rf test/build/*
 
 test: build
-	python3 test/run_tests.py --grammar 2 --stage parser
+	python3 test/run_tests.py --grammar 2
 
 .PHONY: all build run clean test
