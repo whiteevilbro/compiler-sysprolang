@@ -244,11 +244,16 @@ static inline int generate_binary(FILE* file, ASTNode* node, IdentMetaTable* met
   int status            = 0;
   static size_t counter = 0;
 
+  size_t prev;
+  size_t local_counter = counter;
+  counter++;
+
   if (node->data.asBinaryOperator.kind == BOK_ASSIGN)
     return generate_assignment(file, node, meta, result_name);
 
   const char* cmd = NULL;
   bool ext_needed = false;
+  char sc_value   = '\0';
   switch (node->data.asBinaryOperator.kind) {
     case BOK_ADD:
       cmd = "add";
@@ -263,10 +268,12 @@ static inline int generate_binary(FILE* file, ASTNode* node, IdentMetaTable* met
       cmd = "sdiv";
       break;
     case BOK_AND:
-      cmd = "and";
+      cmd      = "and";
+      sc_value = '0';
       break;
     case BOK_OR:
-      cmd = "or";
+      cmd      = "or";
+      sc_value = '1';
       break;
     case BOK_EQ:
       cmd        = "icmp eq";
@@ -306,12 +313,31 @@ static inline int generate_binary(FILE* file, ASTNode* node, IdentMetaTable* met
   const char* rhs_name = NULL;
 
   status |= generate_expression(file, lhs, meta, &lhs_name);
+  size_t scc = local_counter;
+  if (sc_value) {
+    fprintf(file, "br label %%.scstart.%zu\n", local_counter);
+    fprintf(file, "\n.scstart.%zu:\n", local_counter);
+    fprintf(file, "%%.sctmp.%zu = icmp eq i64 %c, %s\n", local_counter, sc_value, lhs_name);
+    fprintf(file, "br i1 %%.sctmp.%zu, label %%.scskip.%zu, label %%.sccont.%zu\n", local_counter, local_counter, local_counter);
+    fprintf(file, "\n.sccont.%zu:\n", local_counter);
+  }
+
   status |= generate_expression(file, rhs, meta, &rhs_name);
 
-  fprintf(file, "%%.tmp.%zu = %s i64 %s, %s\n", counter, cmd, lhs_name, rhs_name);
+  fprintf(file, "%%.tmp.%zu = %s i64 %s, %s\n", local_counter, cmd, lhs_name, rhs_name);
   if (ext_needed) {
-    counter++;
-    fprintf(file, "%%.tmp.%zu = zext i1 %%.tmp.%zu to i64\n", counter, counter - 1);
+    prev          = local_counter;
+    local_counter = counter++;
+    fprintf(file, "%%.tmp.%zu = zext i1 %%.tmp.%zu to i64\n", local_counter, prev);
+  }
+
+  if (sc_value) {
+    fprintf(file, "br label %%.scskip.%zu\n", scc);
+    fprintf(file, "\n.scskip.%zu:\n", scc);
+
+    prev          = local_counter;
+    local_counter = counter++;
+    fprintf(file, "%%.tmp.%zu = phi i64 [%c, %%.scstart.%zu], [%%.tmp.%zu, %%.sccont.%zu]\n", local_counter, sc_value, scc, prev, scc);
   }
 
   free((void*) lhs_name);
@@ -319,16 +345,16 @@ static inline int generate_binary(FILE* file, ASTNode* node, IdentMetaTable* met
 
   if (result_name) {
     char buf[SIZE_T_MAX_DIGITS + 1];
-    snprintf(buf, sizeof(buf) / sizeof(buf[0]), "%ld", counter);
+    snprintf(buf, sizeof(buf) / sizeof(buf[0]), "%ld", local_counter);
 
     size_t len = sizeof("%.tmp.") + strlen(buf);
     char* name = (char*) smalloc(len * sizeof(char));
-    snprintf(name, len, "%%.tmp.%zu", counter);
+    snprintf(name, len, "%%.tmp.%zu", local_counter);
 
     *result_name = name;
   }
 
-  counter++;
+  local_counter++;
 
   return status;
 }
