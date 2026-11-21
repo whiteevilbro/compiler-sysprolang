@@ -1,6 +1,7 @@
 #ifndef PARSER_H
 #define PARSER_H
 
+#include "hashmap/hashmap.h"
 #include "lexer.h"
 
 #include <stdint.h>
@@ -102,6 +103,15 @@ typedef struct ASTNode {
 
 } ASTNode;
 
-int parse(TokenList*, ASTNode**, const char*);
+HashmapDef(char, ASTNode) StrNodeMap;
+
+typedef struct {
+  Lexer* lexer;
+  StrNodeMap identifiers;
+  ASTNode* root;
+} Parser;
+
+void init_parser(Parser*, Lexer*);
+int parse(Parser*, const char*);
 
 #endif

@@ -9,7 +9,6 @@
 #include "hashmap/hashing.h"
 #include "hashmap/hashmap.h"
 #include "lexer.h"
-#include "vector/vector.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -18,10 +17,6 @@
 
 
 typedef uint8_t bindingPower;
-
-HashmapDef(char, ASTNode) map;
-
-static map idmap;
 
 typedef struct {
   bindingPower lbp;
@@ -59,111 +54,127 @@ static union {
     [LE]       = {.binary = BOK_LE},
     [GE]       = {.binary = BOK_GE},
     [AND]      = {.binary = BOK_AND},
-    [OR]       = {.binary = BOK_OR}};
+    [OR]       = {.binary = BOK_OR},
+};
 
 #define attachNext(prev, next) (prev).next = (next)
 #define attachChild(parent, child) (parent).child = (child)
 
 #define newNode() ((ASTNode*) smalloc(sizeof(ASTNode)))
 
-static int parse_return(TokenList*, size_t*, ASTNode**);
-static int parse_decl(TokenList*, size_t*, ASTNode**);
-static int parse_expr(TokenList*, size_t*, bindingPower, ASTNode**);
-static int parse_statement(TokenList*, size_t*, ASTNode**, bool);
-static int parse_if(TokenList*, size_t*, ASTNode**, bool);
-static int parse_while(TokenList*, size_t*, ASTNode**);
-static int parse_block(TokenList*, size_t*, ASTNode**, bool);
+// parsing
+static int parse_return(Parser*, ASTNode**);
+static int parse_decl(Parser*, ASTNode**);
+static int parse_expr(Parser*, bindingPower, ASTNode**);
+static int parse_statement(Parser*, ASTNode**, bool);
+static int parse_if(Parser*, ASTNode**, bool);
+static int parse_while(Parser*, ASTNode**);
+static int parse_block(Parser*, ASTNode**, bool);
 
-static inline ASTNode* make_identifier_node(Token* token);
+// creating various nodes
+static inline ASTNode* new_program(size_t, const char*);
+static ASTNode* make_error_node(const Token*);
+static inline ASTNode* make_identifier_node(const Token*);
+static inline ASTNode* make_literal_node(const Token*);
+static inline ASTNode* make_unary_operator_node(const Token*);
+static inline ASTNode* make_binary_operator_node(const Token*, OperatorKind);
+static inline ASTNode* make_break_node(const Token*);
+static inline ASTNode* make_continue_node(const Token*);
+static inline ASTNode* make_decl_node(const Token*);
 
-static size_t skip_to(TokenList* token_list, size_t offset, enum TokenKind kind) {
-  Token* token = vecGetPtr(token_list, offset);
-  while (token->kind != kind && token->kind != TK_EOF) {
-    offset++;
-    token = vecGetPtr(token_list, offset);
-  }
-  return offset;
-}
+// helpers
+static inline BPPair infix_binding_power(OperatorKind op);
 
-static inline ASTNode* new_program(size_t offset, const char* filename) {
-  ASTNode* node = (ASTNode*) smalloc(sizeof(ASTNode));
-
-  *node = (ASTNode) {.kind = NK_PROGRAM, .offset = offset, .children = NULL, .next = NULL, .data.asProgram = {.filename = filename}};
-
-  return node;
-}
-
-static ASTNode* make_error_node(Token* token) {
-  ASTNode* err_node = newNode();
-
-  *err_node = (ASTNode) {
-      .kind     = NK_ERROR,
-      .offset   = token->offset,
-      .next     = NULL,
-      .children = NULL,
+void init_parser(Parser* parser, Lexer* lexer) {
+  *parser = (Parser) {
+      .lexer = lexer,
+      .root  = NULL,
   };
-
-  return err_node;
+  hashmap_cleanup(&parser->identifiers);
+  hashmap_init(&parser->identifiers, string_hash, string_cmp);
 }
 
-static int parse_return(TokenList* token_list, size_t* offset, ASTNode** node) {
-  Token* ret_token = vecGetPtr(token_list, *offset);
-  assert(ret_token->kind == TK_RETURN);
+int parse(Parser* parser, const char* source_filename) {
+  int status   = 0;
+  Lexer* lexer = parser->lexer;
+
+  Token token;
+
+  status           = peek_token(lexer, &token);
+  ASTNode* program = new_program(token.offset, realpath(source_filename, NULL));
+  parser->root     = program;
+
+  // two-star programming
+  ASTNode** last_statement = &(program->children);
+  do {
+    status |= parse_statement(parser, last_statement, false);
+    if (*last_statement)
+      last_statement = &((*last_statement)->next);
+    peek_token(lexer, &token);
+  } while (token.kind != TK_EOF);
+
+  if (!program->children) {
+    //todo log no statements error
+    return status | 1;
+  }
+  last_statement = &(program->children);
+  while ((*last_statement)->next) {
+    last_statement = &((*last_statement)->next);
+  }
+  if ((*last_statement)->kind != NK_RETURN)
+    status |= 1;
+
+  return status;
+}
+
+static int parse_return(Parser* parser, ASTNode** node) {
+  Token ret_token;
+  get_token(parser->lexer, &ret_token);
+  assert(ret_token.kind == TK_RETURN);
 
   ASTNode* ret_node = newNode();
 
-  *ret_node = (ASTNode) {.kind = NK_RETURN, .offset = ret_token->offset, .children = NULL, .next = NULL};
-  (*offset)++;
-  int status = parse_expr(token_list, offset, 0, &ret_node->children);
+  *ret_node  = (ASTNode) {.kind = NK_RETURN, .offset = ret_token.offset, .children = NULL, .next = NULL};
+  int status = parse_expr(parser, 0, &ret_node->children);
 
   *node = ret_node;
   return status;
 }
 
-static int parse_decl(TokenList* token_list, size_t* offset, ASTNode** node) {
-  int status = 0;
+static int parse_decl(Parser* parser, ASTNode** node) {
+  int status   = 0;
+  Lexer* lexer = parser->lexer;
 
-  Token* token = vecGetPtr(token_list, *offset);
-  assert(token->kind == TK_VAL || token->kind == TK_VAR);
+  Token token;
+  get_token(lexer, &token);
+  assert(token.kind == TK_VAL || token.kind == TK_VAR);
 
-  ASTNode* decl_node = newNode();
+  ASTNode* decl_node = make_decl_node(&token);
 
-  *decl_node = (ASTNode) {
-      .kind               = NK_DECLARE,
-      .offset             = token->offset,
-      .next               = NULL,
-      .children           = NULL,
-      .data.asDeclaration = {.type = token->kind == TK_VAL ? DT_VAL : DT_VAR},
-  };
-
-  (*offset)++;
-
-  token = vecGetPtr(token_list, *offset);
-  if (token->kind == TK_IDENTIFIER)
-    decl_node->children = make_identifier_node(token);
-  else {
-    decl_node->children = make_error_node(token);
+  peek_token(lexer, &token);
+  if (token.kind == TK_IDENTIFIER) {
+    advance_token(lexer);
+    decl_node->children = make_identifier_node(&token);
+  } else {
+    decl_node->children = make_error_node(&token);
     status |= 1;
   }
 
-  (*offset)++;
-  token = vecGetPtr(token_list, *offset);
-  if (token->kind != TK_OP_ASSIGN) {
-    decl_node->children->next = make_error_node(token);
-    status |= 1;
+  peek_token(lexer, &token);
+  if (token.kind == TK_OP_ASSIGN) {
+    advance_token(lexer);
+    status |= parse_expr(parser, 0, &decl_node->children->next);
   } else {
-    (*offset)++;
-    status |= parse_expr(token_list, offset, 0, &decl_node->children->next);
+    decl_node->children->next = make_error_node(&token);
+    status |= 1;
   }
 
   if (!status) {
     const char* key = (const char*) decl_node->children->data.asIndentifier.name;
-    if (hashmap_get(&idmap, key)) {
-      status |= 1;
+    if (hashmap_get(&parser->identifiers, key)) {
+      status |= 1; //todo log redefinition error
     } else {
-      // IdentifierMeta* data = (IdentifierMeta*) smalloc(sizeof(IdentifierMeta));
-      // *data                = (IdentifierMeta) {.kind = decl_node->data.asDeclaration.type};
-      hashmap_insert(&idmap, key, decl_node);
+      hashmap_insert(&parser->identifiers, key, decl_node);
     }
   }
 
@@ -171,303 +182,183 @@ static int parse_decl(TokenList* token_list, size_t* offset, ASTNode** node) {
   return status;
 }
 
-static int parse_if(TokenList* token_list, size_t* offset, ASTNode** node, bool is_loop) {
-  int status = 0;
+static int parse_if(Parser* parser, ASTNode** node, bool is_loop) {
+  int status   = 0;
+  Lexer* lexer = parser->lexer;
 
-  Token* token = vecGetPtr(token_list, *offset);
-  assert(token->kind == TK_IF);
+  Token token;
+  get_token(lexer, &token);
+  assert(token.kind == TK_IF);
 
   ASTNode* if_node = newNode();
 
   *if_node = (ASTNode) {
       .kind     = NK_IF,
-      .offset   = token->offset,
+      .offset   = token.offset,
       .next     = NULL,
       .children = NULL,
   };
 
-  (*offset)++;
-
   ASTNode** last_node = &if_node->children;
-  token               = vecGetPtr(token_list, *offset);
-  if (token->kind == TK_LEFT_PARENTHESIS) {
-    (*offset)++;
-    status |= parse_expr(token_list, offset, 0, last_node);
+  peek_token(lexer, &token);
+  if (token.kind == TK_LEFT_PARENTHESIS) {
+    advance_token(lexer);
 
-    token = vecGetPtr(token_list, *offset);
-    if (token->kind != TK_RIGHT_PARENTHESIS)
-      status |= 1;
+    status |= parse_expr(parser, 0, last_node);
+
+    peek_token(lexer, &token);
+    if (token.kind == TK_RIGHT_PARENTHESIS)
+      advance_token(lexer);
     else
-      (*offset)++;
+      status |= 1;
   } else {
-    *last_node = make_error_node(token);
+    //? I think its fair to say that no parenthesis => no condition and everything that follows is a body, but whatever
+    advance_token(lexer); //! for test with no parenthesis.
+    *last_node = make_error_node(&token);
     status |= 1;
-    (*offset)++;
   }
 
-  token     = vecGetPtr(token_list, *offset);
   last_node = &((*last_node)->next);
-  status |= parse_statement(token_list, offset, last_node, is_loop);
+  status |= parse_statement(parser, last_node, is_loop);
   if (!*last_node) //todo
-    *last_node = make_error_node(token);
+    *last_node = make_error_node(&token);
 
-  token     = vecGetPtr(token_list, *offset);
+  peek_token(lexer, &token);
   last_node = &((*last_node)->next);
-  if (token->kind == TK_ELSE) {
-    (*offset)++;
-    status |= parse_statement(token_list, offset, last_node, is_loop);
+  if (token.kind == TK_ELSE) {
+    advance_token(lexer);
+    status |= parse_statement(parser, last_node, is_loop);
     if (!*last_node)
-      *last_node = make_error_node(token);
+      *last_node = make_error_node(&token);
   }
 
   *node = if_node;
   return status;
 }
 
-static int parse_while(TokenList* token_list, size_t* offset, ASTNode** node) {
-  int status = 0;
+static int parse_while(Parser* parser, ASTNode** node) {
+  int status   = 0;
+  Lexer* lexer = parser->lexer;
 
-  Token* token = vecGetPtr(token_list, *offset);
-  assert(token->kind == TK_WHILE);
+  Token token;
+  get_token(lexer, &token);
+  assert(token.kind == TK_WHILE);
 
   ASTNode* while_node = newNode();
 
   *while_node = (ASTNode) {
       .kind     = NK_WHILE,
-      .offset   = token->offset,
+      .offset   = token.offset,
       .next     = NULL,
       .children = NULL,
   };
 
-  (*offset)++;
-
   ASTNode** cond_node = &while_node->children;
-  token               = vecGetPtr(token_list, *offset);
-  if (token->kind == TK_LEFT_PARENTHESIS) {
-    (*offset)++;
-    status |= parse_expr(token_list, offset, 0, cond_node);
+  get_token(lexer, &token);
+  if (token.kind == TK_LEFT_PARENTHESIS) {
+    status |= parse_expr(parser, 0, cond_node);
 
-    token = vecGetPtr(token_list, *offset);
-    if (token->kind != TK_RIGHT_PARENTHESIS)
+    get_token(lexer, &token);
+    if (token.kind != TK_RIGHT_PARENTHESIS)
       status |= 1;
-    else
-      (*offset)++;
   } else {
-    *cond_node = make_error_node(token);
+    *cond_node = make_error_node(&token);
     status |= 1;
-    (*offset)++;
   }
 
   ASTNode** body = &(*cond_node)->next;
-  status |= parse_statement(token_list, offset, body, true);
+  status |= parse_statement(parser, body, true);
 
   *node = while_node;
   return status;
 }
 
-static int parse_block(TokenList* token_list, size_t* offset, ASTNode** node, bool is_loop) {
-  int status = 0;
+static int parse_block(Parser* parser, ASTNode** node, bool is_loop) {
+  int status   = 0;
+  Lexer* lexer = parser->lexer;
 
-  Token* token = vecGetPtr(token_list, *offset);
-  assert(token->kind == TK_BLOCK_START);
+  Token token;
+  get_token(lexer, &token);
+  assert(token.kind == TK_BLOCK_START);
+
   ASTNode* block_node = newNode();
 
   *block_node = (ASTNode) {
       .kind     = NK_BLOCK,
-      .offset   = token->offset,
+      .offset   = token.offset,
       .next     = NULL,
       .children = NULL,
   };
 
-  (*offset)++;
-
   ASTNode** last_statement = &(block_node->children);
-  while ((token = vecGetPtr(token_list, *offset))->kind != TK_BLOCK_END) {
-    status |= parse_statement(token_list, offset, last_statement, is_loop);
+  while ((peek_token(lexer, &token), token.kind) != TK_BLOCK_END) {
+    status |= parse_statement(parser, last_statement, is_loop);
     if (*last_statement)
       last_statement = &((*last_statement)->next);
   }
+  advance_token(lexer);
 
-  (*offset)++;
   *node = block_node;
   return status;
 }
 
-static inline ASTNode* make_identifier_node(Token* token) {
-  ASTNode* node = newNode();
-
-  *node = (ASTNode) {
-      .kind               = NK_IDENTIFIER,
-      .offset             = token->offset,
-      .next               = NULL,
-      .children           = NULL,
-      .data.asIndentifier = {.name = token->data.str},
-  };
-
-  return node;
-}
-
-static inline ASTNode* make_literal_node(Token* token) {
-  ASTNode* node = newNode();
-
-  switch (token->kind) {
-    case TK_INT_LITERAL:
-      *node = (ASTNode) {
-          .kind              = NK_INT_LITERAL,
-          .offset            = token->offset,
-          .next              = NULL,
-          .children          = NULL,
-          .data.asIntLiteral = {.value = token->data.value},
-      };
-      break;
-    case TK_TRUE:
-    case TK_FALSE:
-      *node = (ASTNode) {
-          .kind               = NK_BOOL_LITERAL,
-          .offset             = token->offset,
-          .next               = NULL,
-          .children           = NULL,
-          .data.asBoolLiteral = {.value = token->kind == TK_TRUE},
-      };
-      break;
-    default:
-      assert(false);
-      __builtin_unreachable();
-      break;
-  }
-
-  return node;
-}
-
-static inline ASTNode* make_unary_operator_node(Token* token) {
-  ASTNode* node = newNode();
-
-  *node = (ASTNode) {
-      .kind                 = NK_UNARY_OP,
-      .offset               = token->offset,
-      .next                 = NULL,
-      .children             = NULL,
-      .data.asUnaryOperator = {.kind = token->kind == TK_OP_MINUS ? UOK_NEG : UOK_NOT}};
-
-  return node;
-}
-
-static inline ASTNode* make_binary_operator_node(Token* token, OperatorKind op) {
-  ASTNode* node = newNode();
-
-  *node = (ASTNode) {
-      .kind                  = NK_BINARY_OP,
-      .offset                = token->offset,
-      .next                  = NULL,
-      .children              = NULL,
-      .data.asBinaryOperator = {.kind = operatorToASTKind[op].binary},
-  };
-
-  return node;
-}
-
-static inline ASTNode* make_break_node(Token* token) {
-  ASTNode* node = newNode();
-
-  *node = (ASTNode) {
-      .kind     = NK_BREAK,
-      .offset   = token->offset,
-      .next     = NULL,
-      .children = NULL,
-  };
-
-  return node;
-}
-
-static inline ASTNode* make_continue_node(Token* token) {
-  ASTNode* node = newNode();
-
-  *node = (ASTNode) {
-      .kind     = NK_CONTINUE,
-      .offset   = token->offset,
-      .next     = NULL,
-      .children = NULL,
-  };
-
-  return node;
-}
-
-static inline BPPair infix_binding_power(OperatorKind op) {
-  switch (op) {
-    case ASSIGN:
-      return (BPPair) {2, 1};
-    case OR:
-      return (BPPair) {3, 4};
-    case AND:
-      return (BPPair) {5, 6};
-    case EQ:
-    case NE:
-      return (BPPair) {7, 8};
-    case LT:
-    case GT:
-    case LE:
-    case GE:
-      return (BPPair) {9, 10};
-    case ADD:
-    case SUBTRACT:
-      return (BPPair) {11, 12};
-    case MULTIPLY:
-    case DIVIDE:
-      return (BPPair) {13, 14};
-  }
-}
-
-static int parse_expr(TokenList* token_list, size_t* offset, bindingPower min_bp, ASTNode** node) {
+static int parse_expr(Parser* parser, bindingPower min_bp, ASTNode** node) {
   __label__ end;
 
-  int status = 0;
+  int status   = 0;
+  Lexer* lexer = parser->lexer;
 
-  Token* token = vecGetPtr(token_list, *offset);
-  (*offset)++;
+  Token token;
+  peek_token(lexer, &token);
 
   ASTNode* lhs;
-  switch (token->kind) {
+  switch (token.kind) {
     case TK_IDENTIFIER:
-      lhs = make_identifier_node(token);
-      if (!hashmap_get((&idmap), (const char*) lhs->data.asIndentifier.name))
+      advance_token(lexer);
+      lhs = make_identifier_node(&token);
+      if (!hashmap_get((&parser->identifiers), (const char*) lhs->data.asIndentifier.name))
         status |= 1;
       break;
 
     case TK_INT_LITERAL:
     case TK_TRUE:
     case TK_FALSE:
-      lhs = make_literal_node(token);
+      advance_token(lexer);
+      lhs = make_literal_node(&token);
       break;
 
     case TK_LEFT_PARENTHESIS:
-      status |= parse_expr(token_list, offset, 0, &lhs);
-      token = vecGetPtr(token_list, *offset);
-      if (token->kind != TK_RIGHT_PARENTHESIS) {
+      advance_token(lexer);
+      status |= parse_expr(parser, 0, &lhs);
+      peek_token(lexer, &token);
+      if (token.kind != TK_RIGHT_PARENTHESIS) {
         status |= 1;
-        lhs = make_error_node(token);
+        lhs = make_error_node(&token);
+      } else {
+        advance_token(lexer);
       }
-      (*offset)++;
       break;
 
     case TK_OP_MINUS:
     case TK_OP_NOT:
       bindingPower r_bp = 100; //TODO
       ASTNode* rhs;
-      status |= parse_expr(token_list, offset, r_bp, &rhs);
-      lhs           = make_unary_operator_node(token);
+      advance_token(lexer);
+      lhs = make_unary_operator_node(&token);
+      status |= parse_expr(parser, r_bp, &rhs);
       lhs->children = rhs;
       break;
 
     default:
       status |= 1;
-      *node = make_error_node(token);
+      *node = make_error_node(&token);
       return status;
   }
 
   while (true) {
-    token = vecGetPtr(token_list, *offset);
+    peek_token(lexer, &token);
     OperatorKind op;
-    switch (token->kind) {
+    switch (token.kind) {
       case TK_RIGHT_PARENTHESIS:
       case TK_EOS:
       case TK_EOF:
@@ -515,25 +406,26 @@ static int parse_expr(TokenList* token_list, size_t* offset, bindingPower min_bp
 
       default:
         status |= 1;
-        *node = make_error_node(token);
+        *node = make_error_node(&token);
         return status;
     }
 
     // postfix block goes here
 
-    BPPair bp = infix_binding_power(op);
+    ASTNode* res = make_binary_operator_node(&token, op);
+    BPPair bp    = infix_binding_power(op);
     if (bp.lbp < min_bp)
       break;
-    (*offset)++;
+    advance_token(lexer);
+
     ASTNode* rhs;
-    status |= parse_expr(token_list, offset, bp.rbp, &rhs);
-    ASTNode* res  = make_binary_operator_node(token, op);
+    status |= parse_expr(parser, bp.rbp, &rhs);
     res->children = lhs;
     lhs->next     = rhs;
 
     if (res->data.asBinaryOperator.kind == BOK_ASSIGN) {
       if (lhs->kind == NK_IDENTIFIER) {
-        ASTNode* decl = hashmap_get(&idmap, (const char*) lhs->data.asIndentifier.name);
+        ASTNode* decl = hashmap_get(&parser->identifiers, (const char*) lhs->data.asIndentifier.name);
         if (!decl || decl->kind != NK_DECLARE || decl->data.asDeclaration.type == DT_VAL)
           status |= 1;
       }
@@ -550,44 +442,46 @@ end:
 }
 
 //todo: rethink behaviour regarding skipping in case of an error
-static int parse_statement(TokenList* token_list, size_t* offset, ASTNode** node, bool is_loop) {
-  int status = 0;
+static int parse_statement(Parser* parser, ASTNode** node, bool is_loop) {
+  int status   = 0;
+  Lexer* lexer = parser->lexer;
 
-  Token* token = vecGetPtr(token_list, *offset);
-  switch (token->kind) {
+  Token token;
+  peek_token(lexer, &token);
+  switch (token.kind) {
     case TK_ERROR:
     case TK_EOF:
     case TK_EOS:
-      (*offset)++; //todo: NOP node
+      advance_token(lexer); //todo: NOP node
       return status;
 
     case TK_VAL:
     case TK_VAR:
-      status |= parse_decl(token_list, offset, node);
+      status |= parse_decl(parser, node);
       break;
 
     case TK_RETURN:
-      status |= parse_return(token_list, offset, node);
+      status |= parse_return(parser, node);
       break;
 
     case TK_IF:
-      status |= parse_if(token_list, offset, node, is_loop);
+      status |= parse_if(parser, node, is_loop);
       return status; // no ; needed
     case TK_WHILE:
-      status |= parse_while(token_list, offset, node);
+      status |= parse_while(parser, node);
       return status; // no ; needed
     case TK_BREAK:
       status |= is_loop ? 0 : 1;
-      *node = make_break_node(token);
-      (*offset)++;
+      *node = make_break_node(&token);
+      advance_token(lexer);
       break;
     case TK_CONTINUE:
       status |= !is_loop;
-      *node = make_continue_node(token);
-      (*offset)++;
+      *node = make_continue_node(&token);
+      advance_token(lexer);
       break;
     case TK_BLOCK_START:
-      status = parse_block(token_list, offset, node, is_loop);
+      status = parse_block(parser, node, is_loop);
       return status;
 
     case TK_RIGHT_PARENTHESIS:
@@ -598,7 +492,7 @@ static int parse_statement(TokenList* token_list, size_t* offset, ASTNode** node
     case TK_OP_NOT:
     case TK_TRUE:
     case TK_FALSE:
-      status |= parse_expr(token_list, offset, 0, node);
+      status |= parse_expr(parser, 0, node);
       break;
 
     case TK_NIL:
@@ -617,52 +511,189 @@ static int parse_statement(TokenList* token_list, size_t* offset, ASTNode** node
     case TK_OP_OR:
     case TK_BLOCK_END:
       status |= 1;
-      (*offset)++;
-      *node = make_error_node(token);
+      advance_token(lexer);
+      *node = make_error_node(&token);
       return status;
   }
   // ensure ;
-  token = vecGetPtr(token_list, *offset);
-  if (token->kind != TK_EOS) {
+  peek_token(lexer, &token);
+  if (token.kind != TK_EOS) {
     status |= 1;
-    *offset = skip_to(token_list, *offset, TK_EOS);
-    token   = vecGetPtr(token_list, *offset);
-    if (token->kind != TK_EOF)
-      (*offset)++;
+
+    //? maybe add skip to the end of the line?
+    // skip to end of statement, block or file whichever is nearer
+    while (token.kind != TK_EOS && token.kind != TK_BLOCK_END && token.kind != TK_EOF) {
+      advance_token(lexer);
+      peek_token(lexer, &token);
+    }
+    if (token.kind == TK_EOS)
+      advance_token(lexer);
   } else {
-    (*offset)++;
+    advance_token(lexer);
   }
 
   return status;
 }
 
-int parse(TokenList* token_list, ASTNode** nodep, const char* source_filename) {
-  int status = 0;
+// Creating various nodes
 
-  hashmap_cleanup(&idmap);
-  hashmap_init(&idmap, string_hash, string_cmp);
+static inline ASTNode* new_program(size_t offset, const char* filename) {
+  ASTNode* node = (ASTNode*) smalloc(sizeof(ASTNode));
 
-  Token* token     = vecGetPtr(token_list, 0);
-  ASTNode* program = new_program(token->offset, realpath(source_filename, NULL));
-  *nodep           = program;
+  *node = (ASTNode) {.kind = NK_PROGRAM, .offset = offset, .children = NULL, .next = NULL, .data.asProgram = {.filename = filename}};
 
-  size_t size    = vecSize(token_list);
-  size_t current = 0;
+  return node;
+}
 
-  // two-star programming
-  ASTNode** last_statement = &(program->children);
-  do {
-    status |= parse_statement(token_list, &current, last_statement, false);
-    if (*last_statement)
-      last_statement = &((*last_statement)->next);
-  } while (token->kind != TK_EOF && current < size);
+static ASTNode* make_error_node(const Token* token) {
+  ASTNode* err_node = newNode();
 
-  last_statement = &(program->children);
-  while ((*last_statement)->next) {
-    last_statement = &((*last_statement)->next);
+  *err_node = (ASTNode) {
+      .kind     = NK_ERROR,
+      .offset   = token->offset,
+      .next     = NULL,
+      .children = NULL,
+  };
+
+  return err_node;
+}
+
+static inline ASTNode* make_identifier_node(const Token* token) {
+  ASTNode* node = newNode();
+
+  *node = (ASTNode) {
+      .kind               = NK_IDENTIFIER,
+      .offset             = token->offset,
+      .next               = NULL,
+      .children           = NULL,
+      .data.asIndentifier = {.name = token->data.str},
+  };
+
+  return node;
+}
+
+static inline ASTNode* make_literal_node(const Token* token) {
+  ASTNode* node = newNode();
+
+  switch (token->kind) {
+    case TK_INT_LITERAL:
+      *node = (ASTNode) {
+          .kind              = NK_INT_LITERAL,
+          .offset            = token->offset,
+          .next              = NULL,
+          .children          = NULL,
+          .data.asIntLiteral = {.value = token->data.value},
+      };
+      break;
+    case TK_TRUE:
+    case TK_FALSE:
+      *node = (ASTNode) {
+          .kind               = NK_BOOL_LITERAL,
+          .offset             = token->offset,
+          .next               = NULL,
+          .children           = NULL,
+          .data.asBoolLiteral = {.value = token->kind == TK_TRUE},
+      };
+      break;
+    default:
+      assert(false);
+      __builtin_unreachable();
+      break;
   }
-  if ((*last_statement)->kind != NK_RETURN)
-    status |= 1;
 
-  return status;
+  return node;
+}
+
+static inline ASTNode* make_unary_operator_node(const Token* token) {
+  ASTNode* node = newNode();
+
+  *node = (ASTNode) {
+      .kind                 = NK_UNARY_OP,
+      .offset               = token->offset,
+      .next                 = NULL,
+      .children             = NULL,
+      .data.asUnaryOperator = {.kind = token->kind == TK_OP_MINUS ? UOK_NEG : UOK_NOT}};
+
+  return node;
+}
+
+static inline ASTNode* make_binary_operator_node(const Token* token, OperatorKind op) {
+  ASTNode* node = newNode();
+
+  *node = (ASTNode) {
+      .kind                  = NK_BINARY_OP,
+      .offset                = token->offset,
+      .next                  = NULL,
+      .children              = NULL,
+      .data.asBinaryOperator = {.kind = operatorToASTKind[op].binary},
+  };
+
+  return node;
+}
+
+static inline ASTNode* make_break_node(const Token* token) {
+  ASTNode* node = newNode();
+
+  *node = (ASTNode) {
+      .kind     = NK_BREAK,
+      .offset   = token->offset,
+      .next     = NULL,
+      .children = NULL,
+  };
+
+  return node;
+}
+
+static inline ASTNode* make_continue_node(const Token* token) {
+  ASTNode* node = newNode();
+
+  *node = (ASTNode) {
+      .kind     = NK_CONTINUE,
+      .offset   = token->offset,
+      .next     = NULL,
+      .children = NULL,
+  };
+
+  return node;
+}
+
+static inline ASTNode* make_decl_node(const Token* token) {
+  ASTNode* node = newNode();
+
+  *node = (ASTNode) {
+      .kind               = NK_DECLARE,
+      .offset             = token->offset,
+      .next               = NULL,
+      .children           = NULL,
+      .data.asDeclaration = {.type = token->kind == TK_VAL ? DT_VAL : DT_VAR},
+  };
+
+  return node;
+}
+
+// helpers
+
+static inline BPPair infix_binding_power(OperatorKind op) {
+  switch (op) {
+    case ASSIGN:
+      return (BPPair) {2, 1};
+    case OR:
+      return (BPPair) {3, 4};
+    case AND:
+      return (BPPair) {5, 6};
+    case EQ:
+    case NE:
+      return (BPPair) {7, 8};
+    case LT:
+    case GT:
+    case LE:
+    case GE:
+      return (BPPair) {9, 10};
+    case ADD:
+    case SUBTRACT:
+      return (BPPair) {11, 12};
+    case MULTIPLY:
+    case DIVIDE:
+      return (BPPair) {13, 14};
+  }
 }

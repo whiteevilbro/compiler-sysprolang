@@ -1,6 +1,8 @@
 #ifndef LEXER_H
 #define LEXER_H
 
+#include "error.h"
+#include "input.h"
 #include "vector/vector.h"
 
 #include <stddef.h>
@@ -66,6 +68,34 @@ typedef struct {
 
 VecDef(Token) TokenList;
 
-int tokenize(const char* src, TokenList* const tokens);
+typedef struct {
+  const char* name;
+  SizeVec newlines;
+} SourceMeta;
+
+typedef struct {
+  const char* source;
+  size_t offset;
+  int current_status;
+  Token current_token;
+  TokenList tokens;
+
+  Logger* logger;
+  SourceMeta source_meta;
+
+  struct {
+    bool save_tokens            : 1;
+    bool current_token_read_out : 1;
+  } flags;
+} Lexer;
+
+void init_lexer(Lexer*, const char*, Logger*, bool save_tokens, const char*);
+
+int peek_token(Lexer*, Token*);
+int get_token(Lexer*, Token*);
+void unget_token(Lexer*);
+int advance_token(Lexer*);
+const TokenList* get_tokens(Lexer*);
+
 
 #endif

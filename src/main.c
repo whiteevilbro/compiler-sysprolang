@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
         break;
       default:
 usage:
-        printf("Usage: splc [-l lexer_outfile] [-p parser_outfile] [-f infile]");
+        printf("Usage: splc [-l lexer_outfile] [-p parser_outfile] [-i LLVM_IR_outfile] [-f infile]");
         exit(-1);
     }
   }
@@ -46,24 +46,32 @@ usage:
     exit(2);
   }
 
-  TokenList tokens = {};
-  int status       = tokenize(buffer, &tokens);
+  int lexer_status, parser_status;
+  Lexer lexer;
+  init_lexer(&lexer, buffer, NULL, (bool) lexer_file, input_file);
 
-  if (lexer_file)
-    output_tokens(lexer_file, tokens, &newlines);
+  Parser parser;
+  init_parser(&parser, &lexer);
 
-  ASTNode* program;
-  if (parser_file || ll_file)
-    status |= parse(&tokens, &program, input_file);
+  parser_status = parse(&parser, input_file);
+  lexer_status  = lexer.current_status;
+
+  if (lexer_file) {
+    output_tokens(lexer_file, lexer.tokens, &newlines);
+    if (!parser_file && !ll_file)
+      return lexer_status;
+  }
 
   if (parser_file)
-    output_ast(parser_file, program, &newlines);
+    output_ast(parser_file, parser.root, &newlines);
 
-  if (status)
+  int status = lexer_status || parser_status;
+  if (status) {
     return status;
+  }
 
   if (ll_file)
-    output_ll(ll_file, program);
+    output_ll(ll_file, parser.root);
 
   return status;
 }
