@@ -12,4 +12,4 @@ InlayHints:
 
 
 CompileFlags:   
-  Add: [-xc, -std=c23, -Wall, -Wextra, -Wpedantic, -Wnozero-length-array]
+  Add: [-xc, -std=c23, -Wall, -Wextra, -Wpedantic, -Wnozero-length-array, -Wimplicit-fallthrough]
